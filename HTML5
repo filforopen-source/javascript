@@ -1,0 +1,596 @@
+
+var jellySim;
+var greyJelly;
+var lastjellypos;
+var mouseTimer = 5000;
+var mouseosc, jellyosc, reverb;
+
+document.ontouchstart = function(e){ e.preventDefault(); }
+
+function setup() {
+  createCanvas(windowWidth, windowHeight);
+  frameRate(120);
+  jellySim = new JellyPhysics();
+  jellySim.CreateBall(75.0, windowWidth/2.0, windowHeight/2.0, 30.0);
+  greyJelly = jellySim.jellyobjects[0];
+  mouseosc = new p5.Oscillator();
+  mouseosc.freq(523.3);
+  mouseosc.amp(0.5);
+  mouseosc.start();
+  jellyosc = new p5.Oscillator();
+  jellyosc.freq(523.3);
+  jellyosc.amp(1.0);
+  jellyosc.setType('sin');
+  jellyosc.start();
+  reverb = new p5.Reverb();
+  reverb.process(mouseosc);
+  reverb.process(jellyosc);
+  lastjellypos = createVector(0,0);
+}
+
+function draw() {
+  background(0, 0, 0, 255);
+  jellySim.AccumulateForces();
+  jellySim.IntegrateEuler();
+  stroke(255, 218, 95, 255);
+  //rectMode(CORNERS);
+  //rect(greyJelly.position.x, greyJelly.position.y, greyJelly.bounds.x, greyJelly.bounds.y);
+
+  noStroke();
+  var skooshfactor = ((50*50) / ((greyJelly.bounds.x - greyJelly.position.x)*(greyJelly.bounds.y - greyJelly.position.y)))*100;
+  fill(191 + skooshfactor, 191 - 2*skooshfactor, 191 - 2*skooshfactor, 255);
+  beginShape();
+  for (var i = 0; i < greyJelly.points.length; i++) {
+    curveVertex(greyJelly.points[i].position.x, greyJelly.points[i].position.y);
+  }
+  for (var i = 0; i < 3; i++) { //needed for smooth curve
+    curveVertex(greyJelly.points[i].position.x, greyJelly.points[i].position.y);
+  }
+  endShape();
+  var mousemag = createVector(mouseX-pmouseX, mouseY-pmouseY).mag();
+  var jellypos = p5.Vector.mult(p5.Vector.add(greyJelly.bounds, greyJelly.position), 0.5);
+  
+  mouseosc.amp(constrain(mousemag/200, 0, 1) , 0.4);
+  mouseosc.freq(lerp( 261.6, 784.0, constrain(mousemag/200, 0, 1)), 0.2);
+  mouseosc.pan(2*(mouseX/width-0.5), 0.05);
+  var jellyvelmag = p5.Vector.sub(lastjellypos, jellypos).mag() * 0.4;
+  jellyosc.amp(constrain(skooshfactor*0.05*jellyvelmag, 0, 1), 0.1);
+  jellyosc.pan(2*((jellypos.x)/width-0.5));
+  //jellyosc.freq(lerp( 196.0, 349.2, constrain(skooshfactor*0.05*jellyvelmag, 0, 1)));
+  jellyosc.freq(random(1600) * constrain(skooshfactor*0.05*jellyvelmag, 0, 1) , 0.1);
+  lastjellypos = jellypos;
+  
+  mouseTimer -= 11;
+  if(mousemag>200){
+    mouseTimer = random(3000, 7000);
+  }
+  Eye(greyJelly.position.x+(greyJelly.bounds.x-greyJelly.position.x)/3, (greyJelly.bounds.y+greyJelly.position.y)/2, (greyJelly.bounds.x-greyJelly.position.x)/200.0, (greyJelly.bounds.y-greyJelly.position.y)/200.0, 15, 10, 3,  mouseTimer<=0);
+  Eye(greyJelly.position.x+2*(greyJelly.bounds.x-greyJelly.position.x)/3, (greyJelly.bounds.y+greyJelly.position.y)/2, (greyJelly.bounds.x-greyJelly.position.x)/200.0, (greyJelly.bounds.y-greyJelly.position.y)/200.0, 15, 10, 3, mouseTimer<=0);
+
+  if (mouseIsPressed || touches.length>0) {
+    stroke(255, 218, 95, 255);
+    strokeWeight(10);
+    line(pmouseX, pmouseY, mouseX, mouseY);
+  } else {
+    stroke(200, 0, 55, 255);
+    strokeWeight(10);
+    line(pmouseX, pmouseY, mouseX, mouseY);
+  }
+}
+
+function mousePressed() {
+  mouseosc.setType('triangle');
+}
+
+function mouseReleased() {
+  mouseosc.setType('sine');
+}
+
+function touchStarted() {
+  mouseosc.setType('triangle');
+}
+
+function touchEnded() {
+  mouseosc.setType('sine');
+}
+
+function Eye(x, y, xs, ys, radius, npoints, noisiness, looking) {
+  if (xs+ys > 1.75) {
+    noStroke();
+    fill(255, 255, 255, 255);
+    WiggleCircle(x, y, xs, ys, radius, npoints, noisiness);
+    fill(0, 0, 0, 255);
+    if(looking){
+      var lookdir = createVector(mouseX-x, mouseY-y);
+      lookdir.normalize();
+      WiggleCircle(x+lookdir.x*xs*radius*0.3, y+lookdir.y*ys*radius*0.3, xs, ys, radius*0.5, npoints, noisiness);
+    }else{
+      WiggleCircle(x, y, xs, ys, radius*0.5, npoints, noisiness);
+    }
+  } else {
+    stroke(0, 0, 0, 255);
+    strokeWeight(5*ys);
+    beginShape();
+    curveVertex(x-radius*xs, y + noisiness*(noise(x-radius*xs)-0.5)*2);
+    curveVertex(x-0.5*radius*xs, y + noisiness*(noise(x-0.5*radius*xs)-0.5)*2);
+    curveVertex(x+0.5*radius*xs, y + noisiness*(noise(x+0.5*radius*xs)-0.5)*2);
+    curveVertex(x+radius*xs, y + noisiness*(noise(x+radius*xs)-0.5)*2);
+    endShape();
+  }
+}
+
+function WiggleCircle(x, y, xs, ys, radius, npoints, noisiness) {
+  var angle = TWO_PI / npoints;
+  beginShape();
+  for (var a = 0; a < TWO_PI + angle*3; a += angle) {
+    var sx = x + cos(a) * radius*xs;
+    var sy = y + sin(a) * radius*ys;
+    curveVertex(sx + noisiness*(noise(sy)-0.5)*2, sy + noisiness*(noise(sx))-0.5)*2;
+  }
+  endShape(CLOSE);
+}
+
+function JellyPoint(x, y) {
+  this.mass = 1.0;
+  this.position = createVector(x, y);
+  this.velocity = createVector(0, 0);
+  this.force = createVector(0, 0);
+}
+
+function JellySpring(a, b) {
+  this.a = a;
+  this.b = b;
+  this.restlength = 0;
+  this.normal = createVector(0, 0);
+}
+
+function JellyObject() {
+  this.points = [];
+  this.springs = [];
+  this.pressure = 100000.0;
+  this.position = createVector(0, 0);
+  this.bounds = createVector(0, 0);
+}
+
+function JellyPhysics() {
+  this.gravity = 98*10;
+  this.springs = [];
+  this.points = [];
+  this.jellyobjects = [];
+  this.lastframetime = millis();
+  this.lowerbound = height-40.0;
+  this.upperbound = 0+40.0;
+  this.rightbound = 0+40.0;
+  this.leftbound = width-40.0;
+
+  this.AddSpring = function(a, b) {
+    var s = new JellySpring(a, b);
+    s.restlength = dist(a.position.x, a.position.y, b.position.x, b.position.y);
+    this.springs.push(s);
+  }
+
+  this.CreateBall = function(radius, x, y, npoints) {
+    var jellyObj = new JellyObject();
+    var angle = TWO_PI / npoints;
+    for (var a = 0; a < TWO_PI; a+= angle) {
+      var p = new JellyPoint(x + cos(a) * radius, y + sin(a) * radius);
+      this.points.push(p);
+      jellyObj.points.push(p);
+    }
+    for (var i = 0; i < npoints; i++) {
+      this.AddSpring(this.points[i], this.points[(i+1) % npoints]);
+      //this.AddSpring(this.points[i], this.points[1]);
+      jellyObj.springs.push(this.springs[this.springs.length-1]);
+    }
+    this.jellyobjects.push(jellyObj);
+  }
+
+  this.AccumulateForces = function() {
+
+    for (var i = 0; i < this.points.length; i++) {
+      this.points[i].force.x = 0;
+      this.points[i].force.y = 0;
+      var gravitydir = createVector(0,1);
+      this.points[i].force.add(p5.Vector.mult( gravitydir, this.points[i].mass * this.gravity));
+      if (mouseIsPressed || touches.length>0) {
+        var mousedir = p5.Vector.sub(createVector(mouseX, mouseY), this.points[i].position);
+        var mousedist = mousedir.mag();
+        mousedir.normalize();
+        if (mousedist<100) {
+          this.points[i].force.add(p5.Vector.mult(createVector(mouseX - pmouseX, mouseY - pmouseY), 250));
+        }
+      }
+    }
+
+
+    for (var i = 0; i < this.springs.length; i++) {
+      var currentlength = dist(this.springs[i].a.position.x, this.springs[i].a.position.y, this.springs[i].b.position.x, this.springs[i].b.position.y);
+      if (currentlength != 0) {
+        var endvels = p5.Vector.sub(this.springs[i].a.position, this.springs[i].b.position);
+        var dx = (this.springs[i].a.position.x - this.springs[i].b.position.x);
+        var dy = (this.springs[i].a.position.y - this.springs[i].b.position.y);
+        var springforcemag = ((currentlength - this.springs[i].restlength) * 1755 + (endvels.x * dx + endvels.y * dy) * 35 / currentlength) * 1;
+        var springforce = createVector( ((this.springs[i].a.position.x - this.springs[i].b.position.x) / currentlength) * springforcemag, ((this.springs[i].a.position.y - this.springs[i].b.position.y) / currentlength) * springforcemag);
+        this.springs[i].a.force.sub(springforce);
+        this.springs[i].b.force.add(springforce);
+      }
+      this.springs[i].normal.x = -dy / currentlength;
+      this.springs[i].normal.y = dx / currentlength;
+      //stroke(50,50,50,255);
+      //strokeWeight(1);
+      //line(this.springs[i].a.position.x+this.springs[i].normal.x*10, this.springs[i].a.position.y+this.springs[i].normal.y*10, this.springs[i].a.position.x, this.springs[i].a.position.y);
+    }
+
+
+
+
+    for (var i = 0; i < this.jellyobjects.length; i++) {
+      var volume = 0;
+      var pressurev = 0;
+      for (var j = 0; j < this.jellyobjects[i].springs.length; j++) {
+        var currentlength = dist(this.jellyobjects[i].springs[j].a.position.x, this.jellyobjects[i].springs[j].a.position.y, this.jellyobjects[i].springs[j].b.position.x, this.jellyobjects[i].springs[j].b.position.y);
+        volume += 0.5 * abs(this.jellyobjects[i].springs[j].a.position.x - this.jellyobjects[i].springs[j].b.position.x) * abs(this.jellyobjects[i].springs[j].normal.x) * currentlength;
+      }
+      for (var j = 0; j < this.jellyobjects[i].springs.length; j++) {
+        var currentlength = dist(this.jellyobjects[i].springs[j].a.position.x, this.jellyobjects[i].springs[j].a.position.y, this.jellyobjects[i].springs[j].b.position.x, this.jellyobjects[i].springs[j].b.position.y);
+        pressurev = currentlength * this.jellyobjects[i].pressure * (1.0 / volume);
+        this.jellyobjects[i].springs[j].a.force.add(p5.Vector.mult(this.jellyobjects[i].springs[j].normal, pressurev));
+        this.jellyobjects[i].springs[j].b.force.add(p5.Vector.mult(this.jellyobjects[i].springs[j].normal, pressurev));
+      }
+    }
+  }
+
+  this.IntegrateEuler = function() {
+    var dx, dy;
+    //var deltaTime = ((millis() - this.lastframetime) / 1000.0) / 1;
+    var deltaTime = 0.011;
+    this.lastframetime = millis();
+    for (var i = 0; i < this.points.length; i++) {
+      this.points[i].velocity.x += (this.points[i].force.x / this.points[i].mass) * deltaTime;
+      dx = this.points[i].velocity.x * deltaTime;
+      if (this.points[i].position.x + dx > this.leftbound) {
+        dx = this.points[i].position.x - this.leftbound;
+        this.points[i].velocity.x *= -0.5;
+        this.points[i].velocity.y *= 0.9;
+      }
+      if (this.points[i].position.x + dx < this.rightbound) {
+        dx = this.rightbound - this.points[i].position.x;
+        this.points[i].velocity.x *= -0.5;
+        this.points[i].velocity.y *= 0.9;
+      }
+      this.points[i].position.x += dx;
+      this.points[i].velocity.y += (this.points[i].force.y / this.points[i].mass) * deltaTime;
+      dy = this.points[i].velocity.y * deltaTime;
+      if (this.points[i].position.y + dy > this.lowerbound) {
+        dy = this.points[i].position.y - this.lowerbound;
+        this.points[i].velocity.y *= -0.5;
+        this.points[i].velocity.x *= 0.9;
+      }
+      if (this.points[i].position.y + dy < 0) {
+        dy = this.upperbound - this.points[i].position.y;
+        this.points[i].velocity.y *= -0.5;
+        this.points[i].velocity.x *= 0.9;
+      }
+      this.points[i].position.y += dy;
+      this.points[i].velocity.mult(0.98);
+    }
+
+    for (var i = 0; i < this.jellyobjects.length; i++) {
+      this.jellyobjects[i].position.x = width;
+      this.jellyobjects[i].position.y = height;
+      this.jellyobjects[i].bounds.x = 0;
+      this.jellyobjects[i].bounds.y = 0;
+      for (var j = 0; j < this.jellyobjects[i].points.length; j++) {
+        if (this.jellyobjects[i].points[j].position.x < this.jellyobjects[i].position.x) {
+          this.jellyobjects[i].position.x = this.jellyobjects[i].points[j].position.x;
+        }
+        if (this.jellyobjects[i].points[j].position.y < this.jellyobjects[i].position.y) {
+          this.jellyobjects[i].position.y = this.jellyobjects[i].points[j].position.y;
+        }
+        if (this.jellyobjects[i].points[j].position.x > this.jellyobjects[i].bounds.x) {
+          this.jellyobjects[i].bounds.x = this.jellyobjects[i].points[j].position.x;
+        }
+        if (this.jellyobjects[i].points[j].position.y > this.jellyobjects[i].bounds.y) {
+          this.jellyobjects[i].bounds.y = this.jellyobjects[i].points[j].position.y;
+        }
+      }
+    }
+  }
+}var jellySim;
+var greyJelly;
+var lastjellypos;
+var mouseTimer = 5000;
+var mouseosc, jellyosc, reverb;
+
+document.ontouchstart = function(e){ e.preventDefault(); }
+
+function setup() {
+  createCanvas(windowWidth, windowHeight);
+  frameRate(120);
+  jellySim = new JellyPhysics();
+  jellySim.CreateBall(75.0, windowWidth/2.0, windowHeight/2.0, 30.0);
+  greyJelly = jellySim.jellyobjects[0];
+  mouseosc = new p5.Oscillator();
+  mouseosc.freq(523.3);
+  mouseosc.amp(0.5);
+  mouseosc.start();
+  jellyosc = new p5.Oscillator();
+  jellyosc.freq(523.3);
+  jellyosc.amp(1.0);
+  jellyosc.setType('sin');
+  jellyosc.start();
+  reverb = new p5.Reverb();
+  reverb.process(mouseosc);
+  reverb.process(jellyosc);
+  lastjellypos = createVector(0,0);
+}
+
+function draw() {
+  background(0, 0, 0, 255);
+  jellySim.AccumulateForces();
+  jellySim.IntegrateEuler();
+  stroke(255, 218, 95, 255);
+  //rectMode(CORNERS);
+  //rect(greyJelly.position.x, greyJelly.position.y, greyJelly.bounds.x, greyJelly.bounds.y);
+
+  noStroke();
+  var skooshfactor = ((50*50) / ((greyJelly.bounds.x - greyJelly.position.x)*(greyJelly.bounds.y - greyJelly.position.y)))*100;
+  fill(191 + skooshfactor, 191 - 2*skooshfactor, 191 - 2*skooshfactor, 255);
+  beginShape();
+  for (var i = 0; i < greyJelly.points.length; i++) {
+    curveVertex(greyJelly.points[i].position.x, greyJelly.points[i].position.y);
+  }
+  for (var i = 0; i < 3; i++) { //needed for smooth curve
+    curveVertex(greyJelly.points[i].position.x, greyJelly.points[i].position.y);
+  }
+  endShape();
+  var mousemag = createVector(mouseX-pmouseX, mouseY-pmouseY).mag();
+  var jellypos = p5.Vector.mult(p5.Vector.add(greyJelly.bounds, greyJelly.position), 0.5);
+  
+  mouseosc.amp(constrain(mousemag/200, 0, 1) , 0.4);
+  mouseosc.freq(lerp( 261.6, 784.0, constrain(mousemag/200, 0, 1)), 0.2);
+  mouseosc.pan(2*(mouseX/width-0.5), 0.05);
+  var jellyvelmag = p5.Vector.sub(lastjellypos, jellypos).mag() * 0.4;
+  jellyosc.amp(constrain(skooshfactor*0.05*jellyvelmag, 0, 1), 0.1);
+  jellyosc.pan(2*((jellypos.x)/width-0.5));
+  //jellyosc.freq(lerp( 196.0, 349.2, constrain(skooshfactor*0.05*jellyvelmag, 0, 1)));
+  jellyosc.freq(random(1600) * constrain(skooshfactor*0.05*jellyvelmag, 0, 1) , 0.1);
+  lastjellypos = jellypos;
+  
+  mouseTimer -= 11;
+  if(mousemag>200){
+    mouseTimer = random(3000, 7000);
+  }
+  Eye(greyJelly.position.x+(greyJelly.bounds.x-greyJelly.position.x)/3, (greyJelly.bounds.y+greyJelly.position.y)/2, (greyJelly.bounds.x-greyJelly.position.x)/200.0, (greyJelly.bounds.y-greyJelly.position.y)/200.0, 15, 10, 3,  mouseTimer<=0);
+  Eye(greyJelly.position.x+2*(greyJelly.bounds.x-greyJelly.position.x)/3, (greyJelly.bounds.y+greyJelly.position.y)/2, (greyJelly.bounds.x-greyJelly.position.x)/200.0, (greyJelly.bounds.y-greyJelly.position.y)/200.0, 15, 10, 3, mouseTimer<=0);
+
+  if (mouseIsPressed || touches.length>0) {
+    stroke(255, 218, 95, 255);
+    strokeWeight(10);
+    line(pmouseX, pmouseY, mouseX, mouseY);
+  } else {
+    stroke(200, 0, 55, 255);
+    strokeWeight(10);
+    line(pmouseX, pmouseY, mouseX, mouseY);
+  }
+}
+
+function mousePressed() {
+  mouseosc.setType('triangle');
+}
+
+function mouseReleased() {
+  mouseosc.setType('sine');
+}
+
+function touchStarted() {
+  mouseosc.setType('triangle');
+}
+
+function touchEnded() {
+  mouseosc.setType('sine');
+}
+
+function Eye(x, y, xs, ys, radius, npoints, noisiness, looking) {
+  if (xs+ys > 1.75) {
+    noStroke();
+    fill(255, 255, 255, 255);
+    WiggleCircle(x, y, xs, ys, radius, npoints, noisiness);
+    fill(0, 0, 0, 255);
+    if(looking){
+      var lookdir = createVector(mouseX-x, mouseY-y);
+      lookdir.normalize();
+      WiggleCircle(x+lookdir.x*xs*radius*0.3, y+lookdir.y*ys*radius*0.3, xs, ys, radius*0.5, npoints, noisiness);
+    }else{
+      WiggleCircle(x, y, xs, ys, radius*0.5, npoints, noisiness);
+    }
+  } else {
+    stroke(0, 0, 0, 255);
+    strokeWeight(5*ys);
+    beginShape();
+    curveVertex(x-radius*xs, y + noisiness*(noise(x-radius*xs)-0.5)*2);
+    curveVertex(x-0.5*radius*xs, y + noisiness*(noise(x-0.5*radius*xs)-0.5)*2);
+    curveVertex(x+0.5*radius*xs, y + noisiness*(noise(x+0.5*radius*xs)-0.5)*2);
+    curveVertex(x+radius*xs, y + noisiness*(noise(x+radius*xs)-0.5)*2);
+    endShape();
+  }
+}
+
+function WiggleCircle(x, y, xs, ys, radius, npoints, noisiness) {
+  var angle = TWO_PI / npoints;
+  beginShape();
+  for (var a = 0; a < TWO_PI + angle*3; a += angle) {
+    var sx = x + cos(a) * radius*xs;
+    var sy = y + sin(a) * radius*ys;
+    curveVertex(sx + noisiness*(noise(sy)-0.5)*2, sy + noisiness*(noise(sx))-0.5)*2;
+  }
+  endShape(CLOSE);
+}
+
+function JellyPoint(x, y) {
+  this.mass = 1.0;
+  this.position = createVector(x, y);
+  this.velocity = createVector(0, 0);
+  this.force = createVector(0, 0);
+}
+
+function JellySpring(a, b) {
+  this.a = a;
+  this.b = b;
+  this.restlength = 0;
+  this.normal = createVector(0, 0);
+}
+
+function JellyObject() {
+  this.points = [];
+  this.springs = [];
+  this.pressure = 100000.0;
+  this.position = createVector(0, 0);
+  this.bounds = createVector(0, 0);
+}
+
+function JellyPhysics() {
+  this.gravity = 98*10;
+  this.springs = [];
+  this.points = [];
+  this.jellyobjects = [];
+  this.lastframetime = millis();
+  this.lowerbound = height-40.0;
+  this.upperbound = 0+40.0;
+  this.rightbound = 0+40.0;
+  this.leftbound = width-40.0;
+
+  this.AddSpring = function(a, b) {
+    var s = new JellySpring(a, b);
+    s.restlength = dist(a.position.x, a.position.y, b.position.x, b.position.y);
+    this.springs.push(s);
+  }
+
+  this.CreateBall = function(radius, x, y, npoints) {
+    var jellyObj = new JellyObject();
+    var angle = TWO_PI / npoints;
+    for (var a = 0; a < TWO_PI; a+= angle) {
+      var p = new JellyPoint(x + cos(a) * radius, y + sin(a) * radius);
+      this.points.push(p);
+      jellyObj.points.push(p);
+    }
+    for (var i = 0; i < npoints; i++) {
+      this.AddSpring(this.points[i], this.points[(i+1) % npoints]);
+      //this.AddSpring(this.points[i], this.points[1]);
+      jellyObj.springs.push(this.springs[this.springs.length-1]);
+    }
+    this.jellyobjects.push(jellyObj);
+  }
+
+  this.AccumulateForces = function() {
+
+    for (var i = 0; i < this.points.length; i++) {
+      this.points[i].force.x = 0;
+      this.points[i].force.y = 0;
+      var gravitydir = createVector(0,1);
+      this.points[i].force.add(p5.Vector.mult( gravitydir, this.points[i].mass * this.gravity));
+      if (mouseIsPressed || touches.length>0) {
+        var mousedir = p5.Vector.sub(createVector(mouseX, mouseY), this.points[i].position);
+        var mousedist = mousedir.mag();
+        mousedir.normalize();
+        if (mousedist<100) {
+          this.points[i].force.add(p5.Vector.mult(createVector(mouseX - pmouseX, mouseY - pmouseY), 250));
+        }
+      }
+    }
+
+
+    for (var i = 0; i < this.springs.length; i++) {
+      var currentlength = dist(this.springs[i].a.position.x, this.springs[i].a.position.y, this.springs[i].b.position.x, this.springs[i].b.position.y);
+      if (currentlength != 0) {
+        var endvels = p5.Vector.sub(this.springs[i].a.position, this.springs[i].b.position);
+        var dx = (this.springs[i].a.position.x - this.springs[i].b.position.x);
+        var dy = (this.springs[i].a.position.y - this.springs[i].b.position.y);
+        var springforcemag = ((currentlength - this.springs[i].restlength) * 1755 + (endvels.x * dx + endvels.y * dy) * 35 / currentlength) * 1;
+        var springforce = createVector( ((this.springs[i].a.position.x - this.springs[i].b.position.x) / currentlength) * springforcemag, ((this.springs[i].a.position.y - this.springs[i].b.position.y) / currentlength) * springforcemag);
+        this.springs[i].a.force.sub(springforce);
+        this.springs[i].b.force.add(springforce);
+      }
+      this.springs[i].normal.x = -dy / currentlength;
+      this.springs[i].normal.y = dx / currentlength;
+      //stroke(50,50,50,255);
+      //strokeWeight(1);
+      //line(this.springs[i].a.position.x+this.springs[i].normal.x*10, this.springs[i].a.position.y+this.springs[i].normal.y*10, this.springs[i].a.position.x, this.springs[i].a.position.y);
+    }
+
+
+
+
+    for (var i = 0; i < this.jellyobjects.length; i++) {
+      var volume = 0;
+      var pressurev = 0;
+      for (var j = 0; j < this.jellyobjects[i].springs.length; j++) {
+        var currentlength = dist(this.jellyobjects[i].springs[j].a.position.x, this.jellyobjects[i].springs[j].a.position.y, this.jellyobjects[i].springs[j].b.position.x, this.jellyobjects[i].springs[j].b.position.y);
+        volume += 0.5 * abs(this.jellyobjects[i].springs[j].a.position.x - this.jellyobjects[i].springs[j].b.position.x) * abs(this.jellyobjects[i].springs[j].normal.x) * currentlength;
+      }
+      for (var j = 0; j < this.jellyobjects[i].springs.length; j++) {
+        var currentlength = dist(this.jellyobjects[i].springs[j].a.position.x, this.jellyobjects[i].springs[j].a.position.y, this.jellyobjects[i].springs[j].b.position.x, this.jellyobjects[i].springs[j].b.position.y);
+        pressurev = currentlength * this.jellyobjects[i].pressure * (1.0 / volume);
+        this.jellyobjects[i].springs[j].a.force.add(p5.Vector.mult(this.jellyobjects[i].springs[j].normal, pressurev));
+        this.jellyobjects[i].springs[j].b.force.add(p5.Vector.mult(this.jellyobjects[i].springs[j].normal, pressurev));
+      }
+    }
+  }
+
+  this.IntegrateEuler = function() {
+    var dx, dy;
+    //var deltaTime = ((millis() - this.lastframetime) / 1000.0) / 1;
+    var deltaTime = 0.011;
+    this.lastframetime = millis();
+    for (var i = 0; i < this.points.length; i++) {
+      this.points[i].velocity.x += (this.points[i].force.x / this.points[i].mass) * deltaTime;
+      dx = this.points[i].velocity.x * deltaTime;
+      if (this.points[i].position.x + dx > this.leftbound) {
+        dx = this.points[i].position.x - this.leftbound;
+        this.points[i].velocity.x *= -0.5;
+        this.points[i].velocity.y *= 0.9;
+      }
+      if (this.points[i].position.x + dx < this.rightbound) {
+        dx = this.rightbound - this.points[i].position.x;
+        this.points[i].velocity.x *= -0.5;
+        this.points[i].velocity.y *= 0.9;
+      }
+      this.points[i].position.x += dx;
+      this.points[i].velocity.y += (this.points[i].force.y / this.points[i].mass) * deltaTime;
+      dy = this.points[i].velocity.y * deltaTime;
+      if (this.points[i].position.y + dy > this.lowerbound) {
+        dy = this.points[i].position.y - this.lowerbound;
+        this.points[i].velocity.y *= -0.5;
+        this.points[i].velocity.x *= 0.9;
+      }
+      if (this.points[i].position.y + dy < 0) {
+        dy = this.upperbound - this.points[i].position.y;
+        this.points[i].velocity.y *= -0.5;
+        this.points[i].velocity.x *= 0.9;
+      }
+      this.points[i].position.y += dy;
+      this.points[i].velocity.mult(0.98);
+    }
+
+    for (var i = 0; i < this.jellyobjects.length; i++) {
+      this.jellyobjects[i].position.x = width;
+      this.jellyobjects[i].position.y = height;
+      this.jellyobjects[i].bounds.x = 0;
+      this.jellyobjects[i].bounds.y = 0;
+      for (var j = 0; j < this.jellyobjects[i].points.length; j++) {
+        if (this.jellyobjects[i].points[j].position.x < this.jellyobjects[i].position.x) {
+          this.jellyobjects[i].position.x = this.jellyobjects[i].points[j].position.x;
+        }
+        if (this.jellyobjects[i].points[j].position.y < this.jellyobjects[i].position.y) {
+          this.jellyobjects[i].position.y = this.jellyobjects[i].points[j].position.y;
+        }
+        if (this.jellyobjects[i].points[j].position.x > this.jellyobjects[i].bounds.x) {
+          this.jellyobjects[i].bounds.x = this.jellyobjects[i].points[j].position.x;
+        }
+        if (this.jellyobjects[i].points[j].position.y > this.jellyobjects[i].bounds.y) {
+          this.jellyobjects[i].bounds.y = this.jellyobjects[i].points[j].position.y;
+        }
+      }
+    }
+  }
+}
